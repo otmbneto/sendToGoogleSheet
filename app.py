@@ -1,0 +1,157 @@
+"""
+Shows basic usage of the Apps Script API.
+Call the Apps Script API to create a new script project, upload a file to the
+project, and log the script's URL to the user.
+"""
+from __future__ import print_function
+
+import os
+import sys
+
+from google.auth.transport.requests import Request
+from google.oauth2.credentials import Credentials
+from google_auth_oauthlib.flow import InstalledAppFlow
+from googleapiclient import errors
+from googleapiclient.discovery import build
+
+SCOPES = os.getenv("GOOGLE_SCOPES").split(",")
+spreadsheets_id = os.getenv("SPREADSHEET_ID")
+
+class ShotsSheet():
+
+
+    def __init__(self,credentials,spreadsheets_id,sheet_name):
+
+
+        self.sheet_name = sheet_name
+        self.id = spreadsheets_id
+        self.service = build('sheets', 'v4', credentials=credentials)
+        self.sheet = self.service.spreadsheets() 
+        self.data = self.sheet.values().get(spreadsheetId = spreadsheets_id,range = sheet_name).execute()["values"]
+        self.getImportantCollumns()
+
+        return
+
+
+    def getImportantCollumns(self):
+
+        for collumn in range(len(self.data[0])):
+
+            if(self.data[0][collumn].lower() == "status blocking"):
+              self.statusBlo= collumn
+            elif(self.data[0][collumn].lower() == "status polish"):
+              self.statusPol= collumn
+            elif(self.data[0][collumn].lower() == "shot"):
+              self.shotsCol = collumn
+            elif(self.data[0][collumn].lower() == "sequence"):
+              self.sequenceCol = collumn
+
+
+    def xl_rowcol_to_cell(self,row_num, col_num):
+
+        # Removed these 2 lines if your row, col is 1 indexed.
+        row_num += 1
+        col_num += 1
+
+        col_str = ''
+
+        while col_num:
+            remainder = col_num % 26
+
+            if remainder == 0:
+                remainder = 26
+
+            # Convert the remainder to a character.
+            col_letter = chr(ord('A') + remainder - 1)
+
+            # Accumulate the column letters, right to left.
+            col_str = col_letter + col_str
+
+            # Get the next order of magnitude.
+            col_num = int((col_num - 1) / 26)
+
+        return col_str + str(row_num)
+
+
+    def findShot(self,shot_code):
+
+        for i in range(len(self.data)):
+
+            if shot_code == self.data[i][self.shotsCol]:
+
+                return i
+
+        return None
+
+
+    def update_value(self,range_name,value):
+        """
+        Creates the batch_update the user has access to.
+        Load pre-authorized user credentials from the environment.
+        TODO(developer) - See https://developers.google.com/identity
+        for guides on implementing OAuth2 for the application.
+            """
+
+        range_name = self.sheet_name + "!" + range_name
+        try:
+            values = [[value]]
+            body = {
+                'values': values
+            }
+            result = self.sheet.values().update(spreadsheetId=self.id, range=range_name,valueInputOption="USER_ENTERED",body=body).execute()
+            print(f"{result.get('updatedCells')} cells updated.")
+            return result
+        except errors.HttpError as error:
+            print(f"An error occurred: {error}")
+            return error
+
+    def setShotStatus(self,shot,step,status):
+
+        line = self.findShot(shot)
+        col = self.statusBlo if step == "blocking" else self.statusPol
+        self.update_value(self.xl_rowcol_to_cell(line,col),status)
+
+        return
+
+
+def getCredentials():
+
+    """Calls the Apps Script API.
+    """
+    creds = None
+    # The file token.json stores the user's access and refresh tokens, and is
+    # created automatically when the authorization flow completes for the first
+    # time.
+
+    current_path = os.path.dirname(os.path.realpath(__file__))
+    if os.path.exists(os.path.join(current_path,'token.json')):
+        creds = Credentials.from_authorized_user_file(os.path.join(current_path,'token.json'), SCOPES)
+    # If there are no (valid) credentials available, let the user log in.
+    if not creds or not creds.valid:
+        if creds and creds.expired and creds.refresh_token:
+            creds.refresh(Request())
+        else:
+            flow = InstalledAppFlow.from_client_secrets_file(os.path.join(current_path,'credentials.json'), SCOPES)
+            creds = flow.run_local_server()
+        # Save the credentials for the next run
+        with open(os.path.join(current_path,'token.json'), 'w') as token:
+            token.write(creds.to_json())
+
+    return creds
+
+
+def main():
+
+    argv = sys.argv
+    print(argv)
+    creds = getCredentials()
+    try:
+        sheet = ShotsSheet(creds,spreadsheets_id,"Shots")
+        sheet.setShotStatus(argv[1],argv[2],argv[3])
+    except errors.HttpError as error:
+        # The API encountered a problem.
+        print(error.content)
+
+
+if __name__ == '__main__':
+    main()
