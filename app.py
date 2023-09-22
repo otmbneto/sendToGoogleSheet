@@ -26,7 +26,7 @@ class ShotsSheet():
         self.sheet_name = self.ftrack_data["sheet_name"]
         self.id = self.ftrack_data["spreadsheet_id"]
         self.service = build('sheets', 'v4', credentials=credentials)
-        self.sheet = self.service.spreadsheets() 
+        self.sheet = self.service.spreadsheets()
         self.data = self.sheet.values().get(spreadsheetId = self.id,range = self.sheet_name).execute()["values"]
         self.getImportantCollumns()
 
@@ -60,6 +60,20 @@ class ShotsSheet():
             self.shotsCol = 2
             self.sequenceCol = 1
             self.startLine = 2
+
+        elif self.ftrack_data["spreadsheet_type"] == "geral":
+
+            self.framesCol = 2
+            self.status = 5
+            self.assignee = 3
+            self.taskCol = 4
+            self.startDate = 8
+            self.dueDate = 9
+            self.shotsCol = 1
+            self.sequenceCol = 0
+            self.description = 7
+            self.startLine = 197
+
 
     def xl_rowcol_to_cell(self,row_num, col_num):
 
@@ -97,8 +111,19 @@ class ShotsSheet():
 
         return None
 
+    def findTask(self,task_name,start_line):
 
-    def update_value(self,range_name,value):
+
+        for i in range(start_line,len(self.data)):
+
+            if task_name == self.data[i][self.taskCol]:
+
+                return i
+
+        return None
+
+
+    def update_value(self,range_name,cells):
         """
         Creates the batch_update the user has access to.
         Load pre-authorized user credentials from the environment.
@@ -108,7 +133,7 @@ class ShotsSheet():
 
         range_name = self.sheet_name + "!" + range_name
         try:
-            values = [[value]]
+            values = [cells]
             body = {
                 'values': values
             }
@@ -124,14 +149,21 @@ class ShotsSheet():
         line = self.findShot(self.ftrack_data["shot"])
         if self.ftrack_data["spreadsheet_type"] == "animation":
             col = self.statusBlo if self.ftrack_data["task"] == "blocking" else self.statusPol
+            srange = self.xl_rowcol_to_cell(line,col)
+            self.update_value(self.xl_rowcol_to_cell(line,col),[self.ftrack_data["status"]])
         elif self.ftrack_data["spreadsheet_type"] == "render":
-            col = self.assigneeRender if self.ftrack_data["task"] == "render" else self.assigneeComp
-            self.update_value(self.xl_rowcol_to_cell(line,col),self.ftrack_data["assignees"])
-            col = self.dateRender if self.ftrack_data["task"] == "render" else self.dateComp
-            self.update_value(self.xl_rowcol_to_cell(line,col),self.ftrack_data["date"])
-            col = self.statusRender if self.ftrack_data["task"] == "render" else self.statusComp
+            start_col = self.assigneeRender if self.ftrack_data["task"] == "render" else self.assigneeComp
+            end_col = self.dateRender if self.ftrack_data["task"] == "render" else self.dateComp
+            srange = self.xl_rowcol_to_cell(line,start_col) + ":" + self.xl_rowcol_to_cell(line,end_col)
+            self.update_value(srange,[self.ftrack_data["assignees"],self.ftrack_data["status"],self.ftrack_data["date"]])
 
-        self.update_value(self.xl_rowcol_to_cell(line,col),self.ftrack_data["status"])
+        elif self.ftrack_data["spreadsheet_type"] == "geral":
+
+            line = findTask(self.ftrack_data["task"],line)
+            srange = self.xl_rowcol_to_cell(line,self.assignee) + ":" + self.xl_rowcol_to_cell(line,self.description)
+            cells = [self.ftrack_data["assignees"],self.ftrack_data["task"],self.ftrack_data["status"],self.ftrack_data["task_type"],self.ftrack["description"]]
+            self.update_value(srange,cells)
+
 
         return
 
@@ -167,11 +199,7 @@ def main():
     argv = sys.argv
     creds = getCredentials()
     try:
-
-        print(argv[1])
         data = json.loads(argv[1])
-
-
         sheet = ShotsSheet(creds,data)
         sheet.setShotStatus()
     except errors.HttpError as error:
