@@ -7,6 +7,7 @@ from __future__ import print_function
 
 import os
 import sys
+import json
 
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
@@ -15,37 +16,50 @@ from googleapiclient import errors
 from googleapiclient.discovery import build
 
 SCOPES = os.getenv("GOOGLE_SCOPES").split(",")
-spreadsheets_id = os.getenv("SPREADSHEET_ID")
 
 class ShotsSheet():
 
 
-    def __init__(self,credentials,spreadsheets_id,sheet_name):
+    def __init__(self,credentials,input_data):
 
-
-        self.sheet_name = sheet_name
-        self.id = spreadsheets_id
+        self.ftrack_data = input_data
+        self.sheet_name = self.ftrack_data["sheet_name"]
+        self.id = self.ftrack_data["spreadsheet_id"]
         self.service = build('sheets', 'v4', credentials=credentials)
         self.sheet = self.service.spreadsheets() 
-        self.data = self.sheet.values().get(spreadsheetId = spreadsheets_id,range = sheet_name).execute()["values"]
+        self.data = self.sheet.values().get(spreadsheetId = self.id,range = self.sheet_name).execute()["values"]
         self.getImportantCollumns()
 
         return
 
+    def getSheetData(self):
+
+        return self.data
 
     def getImportantCollumns(self):
 
-        for collumn in range(len(self.data[0])):
 
-            if(self.data[0][collumn].lower() == "status blocking"):
-              self.statusBlo= collumn
-            elif(self.data[0][collumn].lower() == "status polish"):
-              self.statusPol= collumn
-            elif(self.data[0][collumn].lower() == "shot"):
-              self.shotsCol = collumn
-            elif(self.data[0][collumn].lower() == "sequence"):
-              self.sequenceCol = collumn
+        if self.ftrack_data["spreadsheet_type"] == "animation":
 
+            self.status = 14
+            self.statusBlo = 15
+            self.statusPol = 16
+            self.shotsCol = 2
+            self.sequenceCol = 1
+            self.startLine = 1
+
+        elif self.ftrack_data["spreadsheet_type"] == "render":
+
+            self.status = 14
+            self.assigneeRender = 8
+            self.statusRender = 9
+            self.dateRender = 10
+            self.assigneeComp = 13
+            self.statusComp = 14
+            self.dateComp = 15
+            self.shotsCol = 2
+            self.sequenceCol = 1
+            self.startLine = 2
 
     def xl_rowcol_to_cell(self,row_num, col_num):
 
@@ -105,11 +119,19 @@ class ShotsSheet():
             print(f"An error occurred: {error}")
             return error
 
-    def setShotStatus(self,shot,step,status):
+    def setShotStatus(self):
 
-        line = self.findShot(shot)
-        col = self.statusBlo if step == "blocking" else self.statusPol
-        self.update_value(self.xl_rowcol_to_cell(line,col),status)
+        line = self.findShot(self.ftrack_data["shot"])
+        if self.ftrack_data["spreadsheet_type"] == "animation":
+            col = self.statusBlo if self.ftrack_data["task"] == "blocking" else self.statusPol
+        elif self.ftrack_data["spreadsheet_type"] == "render":
+            col = self.assigneeRender if self.ftrack_data["task"] == "render" else self.assigneeComp
+            self.update_value(self.xl_rowcol_to_cell(line,col),self.ftrack_data["assignees"])
+            col = self.dateRender if self.ftrack_data["task"] == "render" else self.dateComp
+            self.update_value(self.xl_rowcol_to_cell(line,col),self.ftrack_data["date"])
+            col = self.statusRender if self.ftrack_data["task"] == "render" else self.statusComp
+
+        self.update_value(self.xl_rowcol_to_cell(line,col),self.ftrack_data["status"])
 
         return
 
@@ -143,15 +165,18 @@ def getCredentials():
 def main():
 
     argv = sys.argv
-    print(argv)
     creds = getCredentials()
     try:
-        sheet = ShotsSheet(creds,spreadsheets_id,"Shots")
-        sheet.setShotStatus(argv[1],argv[2],argv[3])
+
+        print(argv[1])
+        data = json.loads(argv[1])
+
+
+        sheet = ShotsSheet(creds,data)
+        sheet.setShotStatus()
     except errors.HttpError as error:
         # The API encountered a problem.
         print(error.content)
-
 
 if __name__ == '__main__':
     main()
