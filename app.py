@@ -105,7 +105,7 @@ class ShotsSheet():
 
         for i in range(len(self.data)):
 
-            if shot_code == self.data[i][self.shotsCol]:
+            if self.shotsCol < len(self.data[i]) and shot_code == self.data[i][self.shotsCol]:
 
                 return i
 
@@ -113,9 +113,9 @@ class ShotsSheet():
 
     def findTask(self,task_name,start_line):
 
-
         for i in range(start_line,len(self.data)):
 
+            print(task_name + " =? " + self.data[i][self.taskCol])
             if task_name == self.data[i][self.taskCol]:
 
                 return i
@@ -159,9 +159,9 @@ class ShotsSheet():
 
         elif self.ftrack_data["spreadsheet_type"] == "geral":
 
-            line = findTask(self.ftrack_data["task"],line)
+            line = self.findTask(self.ftrack_data["task"],line)
             srange = self.xl_rowcol_to_cell(line,self.assignee) + ":" + self.xl_rowcol_to_cell(line,self.description)
-            cells = [self.ftrack_data["assignees"],self.ftrack_data["task"],self.ftrack_data["status"],self.ftrack_data["task_type"],self.ftrack["description"]]
+            cells = [self.ftrack_data["assignees"],self.ftrack_data["task"],self.ftrack_data["status"],self.ftrack_data["task_type"],self.ftrack_data["description"]]
             self.update_value(srange,cells)
 
 
